@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+import os, sys, time
+import signal
+import argparse
+import subprocess
+import threading
+continue_hop_thread = True   # global for inter-thread signaling
+
+
+class CmdLineOptions():
+    ''' class for command line option'''
+
+    def __init__(self):   
+        self.parser = argparse.ArgumentParser()
+        self.parser.add_argument('-t', '--time', action='store', dest='time',
+            default = [60], nargs=1, type=float, help='hopping time in sec [default = 60]')
+        self.parser.add_argument('-r', '--remain', action='store', dest='remain',
+            default = [5], nargs=1, type=float,
+            help='time in sec to reamin on each channel [default = 5]')
+        self.parser.add_argument('-c', '--channels', dest='channels', 
+            nargs='*', default=[1, 6, 11], type=int,
+            help='channel numbers with spaces in between [default = 1 6 11]')
+        self.parser.add_argument('--cmd', action='store',
+            default='not set', type=str, help='''command
+            to be passed to system after hopping started
+            [example: --cmd='tcpdump -i en0 -I -w dump.pcap'][default: 'not set -> try: hopdump --help']''')
+        self.opts = self.parser.parse_args()
+
+
+
+class HopCommander(threading.Thread):
+    '''class for channel hopping thread'''
+
+    def __init__(self, args):  # args = result of argparse
+        threading.Thread.__init__(self)
+        self.iface = 'en0'
+        self.time = args.opts.time[0]
+        self.channels = args.opts.channels
+        self.remain = args.opts.remain[0]
+        self.tcpdump = args.opts.cmd
+        self.airport_path = self.find_airport()  # airport utility in OS X required to change channels
+
+    def show_settings(self):
+        '''show hopper settings before hopping starts'''
+        print('\n[*] hopper settings:\n')
+        print('total hop time in sec.                  = {}'.format(self.time))
+        print('time to remain on each channel in sec.  = {}'.format(self.remain))
+        print('channels to hop                         = {}'.format(self.channels))
+        print('tcpdump command                         = {}'.format(self.tcpdump))
+
+    def run(self):
+        '''executed at the time the thread is started'''
+        self.show_settings()
+        i = 0
+        print('\n[*] channel hopping started\n')
+        # disassociate from associated BSSID (required to change channel setting)
+        cmd = self.airport_path + ' -z'
+        subprocess.call(cmd, shell=True)
+        # switch channels while some time is left
+        while (self.time > self.remain) and continue_hop_thread:
+            if i >= len(self.channels): i = 0
+            # build command string
+            cmd = self.airport_path + ' i={} --channel={}'.format(self.iface, self.channels[i])
+            # execute command string
+            subprocess.call(cmd, shell=True)
+            # switch to next channel
+            i += 1
+            # calculate remaining time for hopping
+            self.time = self.time - self.remain
+            # remain on channel for the set time
+            time.sleep(self.remain)
+        if self.tcpdump == False: exit_scenario = 1  # hopping ends (no tcpdump)
+        if self.tcpdump and continue_hop_thread: exit_scenario = 2  # hopping ends before tcpdump
+        if self.tcpdump and not continue_hop_thread: exit_scenario = 3 # tcpdump ended before hopping
+        self.exit_hopper(exit_scenario)
+
+    def find_airport(self):
+        """Finds the path to airport utility in OS X"""
+        airport_path = ''
+        for r,d,f in os.walk("/System/Library/PrivateFrameworks/Apple80211.framework"):
+            for files in f:
+                if files == "airport":
+                    airport_path = os.path.join(r,files)
+                    return airport_path
+        print('[*] Could not find airport utility. Set airport_path manually in the HopCommander class')
+        sys.exit()
+
+    def exit_hopper(self, scenario):
+        '''Terminate and explain exit status of tcpdump and hopping thread'''
+        if scenario == 1:  # hopping time ended, no tcpdump
+            print('[*] hopping ended (tcpdump had not been called)')
+        if scenario == 2:  # hopping ended, tcpdump still running (e.g. when using short -t in hopper)
+            subprocess.call('pkill -HUP -f tcpdump', shell=True) # stop tcpdump
+            time.sleep(1)  # giving tcpdump a sec to print capture summary
+            print('[*] hopping ended first, tcpdump terminated')
+        if scenario == 3:  # tcpdump ended first (e.g. when using -c in tcpdum)
+            print('[*] tcpdump ended first, channel hopping stopped')
+        # reset wi-fi which had to be de-associated for hopping
+        subprocess.call('ifconfig en0 up', shell=True)
+        sys.exit()
+
+
+class DumpCommander(threading.Thread):
+    '''class for packet dump subprocess thread'''
+    def __init__(self, command_string):  # command to be called by the thread
+        threading.Thread.__init__(self)
+        self.command_string = command_string
+
+    def run(self):
+        '''executed at the time the thread is started'''
+        global continue_hop_thread  # for inter-thread signaling
+        cmd = 'sudo ' + self.command_string
+        ret_code = subprocess.call(cmd, shell=True)
+        if ret_code == 1: print('[*] tcpdump reports an error - try running tcpdump without hopper first')
+        continue_hop_thread = False
+        sys.exit()
+
+
+def check_root():
+    """Exits if user has no root privileges"""
+    if not (os.getuid() & os.getgid() == 0):
+        print('\n[*]channel hopper requires <sudo> to run\n')
+        sys.exit()
+    return
+
+
+def signal_handler(signal, frame):
+        continue_hop_thread = False
+
+
+def main():
+    signal.signal(signal.SIGINT, signal_handler)
+    check_root()                # no root, no go
+    args = CmdLineOptions()
+    hop_thread = HopCommander(args)
+    hop_thread.start()
+    if not (args.opts.cmd == 'not set'):
+        dump_thread = DumpCommander(args.opts.cmd)
+        dump_thread.start()
+    else:
+        print('\n[*] Try the following options: sudo ./hopdump --cmd="tcpdump -i en0 -I"')
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+
