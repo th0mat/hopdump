@@ -1,12 +1,12 @@
 #################################################################################
 
-hopdump - tcpdump plus channel hopping
+HOPDUMP is tcpdump plus channel hopping - a command line utility for OS X
 
 th.natter@gmail.com
 
 #################################################################################
 
-Works for OSX and uses the aiport utility to disassociate and change channels
+Works on OSX and uses the aiport utility to disassociate and change channels
 
 hopdump is a python wrapper around tcpdump adding the following 
 functionality:
