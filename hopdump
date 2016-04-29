@@ -125,21 +125,22 @@ def check_root():
 
 
 def signal_handler(signal, frame):
-        continue_hop_thread = False
+    global continue_hop_thread
+    continue_hop_thread = False
 
 
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     check_root()                # no root, no go
     args = CmdLineOptions()
-    hop_thread = HopCommander(args)
-    hop_thread.start()
-    if not (args.opts.cmd == 'not set'):
+    if (args.opts.cmd == 'not set'):
+        print('\n[*] Try ./hopdump -h\n[*] or\n[*] try using the command like this: sudo ./hopdump --cmd="tcpdump -i en0 -I"\n')
+        sys.exit()
+    else:
+        hop_thread = HopCommander(args)
+        hop_thread.start()
         dump_thread = DumpCommander(args.opts.cmd)
         dump_thread.start()
-    else:
-        print('\n[*] Try the following options: sudo ./hopdump --cmd="tcpdump -i en0 -I"')
-        sys.exit(0)
 
 
 if __name__ == "__main__":
