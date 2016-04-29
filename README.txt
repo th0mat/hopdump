@@ -23,26 +23,27 @@ Example usage:
 
 sudo ./hopdump --cmd="tcpdump -i en0 -I"
 
--------------------------------------------------------------------
+---------------------------------------------------------------------------------
 
 # as above, plus setting the channels to be hopped
 
 sudo ./hopdump -c 1 3 5 7 9 11 --cmd="tcpdump -i en0 -I"
 
--------------------------------------------------------------------
+---------------------------------------------------------------------------------
 
 # as above, plus setting the time to remain on a channel 
 # to 0.01 seconds
 
 sudo ./hopdump -c 1 3 5 7 9 11 -r 0.01 --cmd="tcpdump -i en0 -I"
 
--------------------------------------------------------------------
+---------------------------------------------------------------------------------
 
 # as above, plus setting the total hopping time to one hour
 # the hopping can always be interrupted with ctrl-c
 
 sudo ./hopdump -c 1 3 5 7 9 11 -r 0.01 -t 3600 --cmd="tcpdump -i en0 -I"
 
+=================================================================================
 
 
 usage: sudo ./hopdump [-h] [-t TIME] [-r REMAIN] [-c [CHANNELS [CHANNELS ...]]]
